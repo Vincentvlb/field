@@ -590,7 +590,8 @@ class CameraAdapterIMX219_170:
                     display_height
                 )
         )
-        self._cap = VideoCaptureNoBuffer(gst_config, cv.CAP_GSTREAMER)
+        self._cap = cv.VideoCapture(gst_config, cv.CAP_GSTREAMER)
+        self._cap = cv.VideoCapture(cv.CAP_PROP_BUFFERSIZE, 1)
 
     def __enter__(self):
         return self
@@ -603,43 +604,12 @@ class CameraAdapterIMX219_170:
 
     def get_image(self):
         if self._cap.isOpened():
-            image = self._cap.read()
+            for i in range(self._cap.get(cv.CAP_PROP_BUFFERSIZE) + 1):
+                ret, image = self._cap.read()
             # rotate for 90 degrees and crop black zones
             return cv.rotate(image, 2)[config.CROP_H_FROM:config.CROP_H_TO, config.CROP_W_FROM:config.CROP_W_TO]
         else:
             raise RuntimeError("Unable to open camera")
-
-
-class VideoCaptureNoBuffer:
-
-    def __init__(self, *args):
-        self._cap = cv.VideoCapture(*args)
-        self._queue = queue.Queue()
-        self._thread = threading.Thread(target=self._reader)
-        self._thread.daemon = True
-        self._thread.start()
-
-    def release(self):
-        self._cap.release()
-
-    def isOpened(self):
-        return self._cap.isOpened()
-
-    # read frames as soon as they are available, keeping only most recent one
-    def _reader(self):
-        while True:
-            ret, frame = self._cap.read()
-            if not ret:
-                break
-            if not self._queue.empty():
-                try:
-                    self._queue.get_nowait()  # discard previous (unprocessed) frame
-                except queue.Empty:
-                    pass
-            self._queue.put(frame)
-
-    def read(self):
-        return self._queue.get()
 
 
 class CompassAdapter:
